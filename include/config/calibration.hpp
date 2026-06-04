@@ -18,7 +18,7 @@
 namespace calibration {
 
 constexpr uint16_t RAW_DRY_FLOOR = 2600;  // operational dry baseline
-constexpr uint16_t RAW_WET_FULL  = 1700;  // freshly watered mint pot
+constexpr uint16_t RAW_WET_FULL  = 1000;  // freshly watered mint pot
 
 // State thresholds in percent (0 = dry, 100 = saturated).
 // See docs/decisions/ADR-005-mint-thresholds.md for biological
