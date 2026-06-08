@@ -21,8 +21,6 @@ constexpr uint16_t RAW_DRY_FLOOR = 2600;  // operational dry baseline
 constexpr uint16_t RAW_WET_FULL  = 1000;  // freshly watered mint pot
 
 // State thresholds in percent (0 = dry, 100 = saturated).
-// See docs/decisions/ADR-005-mint-thresholds.md for biological
-// justification.
 constexpr uint8_t PCT_CRITICAL_BELOW   = 20;
 constexpr uint8_t PCT_WATER_NOW_BELOW  = 40;
 constexpr uint8_t PCT_WATER_SOON_BELOW = 60;

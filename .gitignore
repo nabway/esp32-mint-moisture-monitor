@@ -24,6 +24,7 @@ Thumbs.db
 *.map
 
 # Secrets (next phase)
+include/config/secrets.hpp
 secrets.h
 credentials.h
 wifi_credentials.h
