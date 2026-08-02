@@ -26,6 +26,9 @@ Thumbs.db
 # Private docs — local only, never pushed
 .hidden.docs/
 
+# Claude Code
+.claude/
+
 # Secrets (next phase)
 include/config/secrets.hpp
 secrets.h
