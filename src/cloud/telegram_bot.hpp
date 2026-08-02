@@ -11,6 +11,11 @@ namespace cloud {
 
 class TelegramBot {
 public:
+    // Announce boot and seed the change detector. Call once from setup(),
+    // after the first samples have been taken. Alerts if the device woke up
+    // outside the ideal range.
+    static void bootReport(const sensor::MoistureReading& r);
+
     // Send alert only when MoistureState changes. Call after every sample.
     static void checkStateChange(const sensor::MoistureReading& r);
 

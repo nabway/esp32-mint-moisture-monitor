@@ -23,6 +23,9 @@ Thumbs.db
 *.elf
 *.map
 
+# Private docs — local only, never pushed
+.hidden.docs/
+
 # Secrets (next phase)
 include/config/secrets.hpp
 secrets.h

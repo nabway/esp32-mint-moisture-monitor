@@ -1,7 +1,6 @@
 #include <Arduino.h>
 #include "config/pins.hpp"
 #include "config/secrets.hpp"
-#include "config/pins.hpp"
 #include "config/calibration.hpp"
 #include "sensor/moisture.hpp"
 #include "net/wifi_manager.hpp"
@@ -10,17 +9,40 @@
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
-static constexpr uint32_t SAMPLE_INTERVAL_MS  = 15000;   // read sensor every 15 s
+static constexpr uint32_t SENSOR_INTERVAL_MS  = 1000;   // read the ADC every 1 s
+static constexpr uint32_t REPORT_INTERVAL_MS  = 15000;  // log + Telegram every 15 s
 static constexpr uint32_t PUBLISH_INTERVAL_MS = 30000;  // publish MQTT every 30 s
-static constexpr uint8_t  ALERT_BELOW_PCT     = 50;     // telegram alert threshold
+
+// Samples taken back-to-back in setup() to fill the moving-average window
+// before the first reading is reported.
+static constexpr size_t   BOOT_PRIME_SAMPLES  = 10;
+static constexpr uint32_t BOOT_PRIME_DELAY_MS = 50;
 
 // ── State ─────────────────────────────────────────────────────────────────────
-// Latched LED state, updated with hysteresis (see loop()).
+// Latched LED state, updated with hysteresis (see updateAlertLed()).
 static bool alert_active = false;
 static sensor::MoistureSensor moisture(pins::MOISTURE_ADC);
 
 static uint32_t last_sample_ms  = 0;
+static uint32_t last_report_ms  = 0;
 static uint32_t last_publish_ms = 0;
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+// Hysteresis around the alert threshold:
+//   ON  at <= PCT_ALERT_BELOW
+//   OFF at >= PCT_ALERT_BELOW + PCT_HYSTERESIS
+// Between the two the previous state is held.
+static void updateAlertLed(const sensor::MoistureReading& r) {
+    if (r.percent <= calibration::PCT_ALERT_BELOW) {
+        alert_active = true;
+    } else if (r.percent >=
+               calibration::PCT_ALERT_BELOW + calibration::PCT_HYSTERESIS) {
+        alert_active = false;
+    }
+
+    digitalWrite(pins::ONBOARD_LED, alert_active ? HIGH : LOW);
+}
 
 // ── Setup ─────────────────────────────────────────────────────────────────────
 
@@ -31,8 +53,8 @@ void setup() {
     log_i("=== Menta Monitor v2.0.0 boot ===");
 
     pinMode(pins::ONBOARD_LED, OUTPUT);
-    digitalWrite(pins::ONBOARD_LED, HIGH);  // start OFF
-    
+    digitalWrite(pins::ONBOARD_LED, LOW);  // active HIGH, so LOW is OFF
+
     moisture.begin();
 
     if (!net::WiFiManager::begin(30000)) {
@@ -46,8 +68,28 @@ void setup() {
         log_w("MQTT not connected on boot — will retry");
     }
 
-    // Boot notification so you know the device came online
-    cloud::TelegramBot::send("🌿 Menta Monitor online");
+    // Fill the moving-average window so the boot report reflects the substrate
+    // and not a single noisy conversion.
+    for (size_t i = 0; i < BOOT_PRIME_SAMPLES; ++i) {
+        moisture.sample();
+        delay(BOOT_PRIME_DELAY_MS);
+    }
+
+    const sensor::MoistureReading boot_reading = moisture.last();
+    updateAlertLed(boot_reading);
+
+    log_i("boot reading: %u%% | raw: %u | avg: %.1f | state: %s",
+          boot_reading.percent, boot_reading.raw, boot_reading.raw_avg,
+          sensor::toString(boot_reading.state));
+
+    // Boot notification. Reports the state the device woke up in, so a pot that
+    // is already dry raises an alert instead of silently becoming the baseline.
+    cloud::TelegramBot::bootReport(boot_reading);
+
+    const uint32_t now = millis();
+    last_sample_ms  = now;
+    last_report_ms  = now;
+    last_publish_ms = now;
 
     log_i("Setup complete");
 }
@@ -60,30 +102,27 @@ void loop() {
     // ── Keep connections alive ────────────────────────────────────────────────
     net::WiFiManager::loop();
     net::MqttClient::loop();
-    const auto r = moisture.sample();
-     // Hysteresis around the 50% alert threshold:
-    //   ON  at <= 50%
-    //   OFF at >= 53%
-    // Between 50% and 53% the previous state is held.
-    if (r.percent <= calibration::PCT_ALERT_BELOW) {
-        alert_active = true;
-    } else if (r.percent >=
-               calibration::PCT_ALERT_BELOW + calibration::PCT_HYSTERESIS) {
-        alert_active = false;
+
+    // ── Sample sensor at a fixed cadence ──────────────────────────────────────
+    // One sample per second, so the 10-slot window spans ~10 s of real time.
+    // Sampling on every loop iteration filled the window in microseconds, which
+    // averaged ADC noise but gave no smoothing over time.
+    if (now - last_sample_ms >= SENSOR_INTERVAL_MS) {
+        last_sample_ms = now;
+        updateAlertLed(moisture.sample());
     }
 
-    digitalWrite(pins::ONBOARD_LED, alert_active ? HIGH : LOW);
+    // ── Report ────────────────────────────────────────────────────────────────
+    if (now - last_report_ms >= REPORT_INTERVAL_MS) {
+        last_report_ms = now;
 
-    // ── Sample sensor ─────────────────────────────────────────────────────────
-    if (now - last_sample_ms >= SAMPLE_INTERVAL_MS) {
-        last_sample_ms = now;
-
+        const sensor::MoistureReading r = moisture.last();
         const char* state_str = sensor::toString(r.state);
 
         log_i("moisture: %u%% | raw: %u | avg: %.1f | state: %s",
               r.percent, r.raw, r.raw_avg, state_str);
 
-        // ── Telegram alert check alerts and polling ───────────────────────────
+        // ── Telegram alert check and command polling ──────────────────────────
         cloud::TelegramBot::checkStateChange(r);
         cloud::TelegramBot::poll(r);
 
