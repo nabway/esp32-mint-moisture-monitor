@@ -3,6 +3,7 @@
 #include "config/secrets.hpp"
 #include "config/calibration.hpp"
 #include "sensor/moisture.hpp"
+#include "sensor/light.hpp"
 #include "net/wifi_manager.hpp"
 #include "net/mqtt_client.hpp"
 #include "cloud/telegram_bot.hpp"
@@ -22,6 +23,7 @@ static constexpr uint32_t BOOT_PRIME_DELAY_MS = 50;
 // Latched LED state, updated with hysteresis (see updateAlertLed()).
 static bool alert_active = false;
 static sensor::MoistureSensor moisture(pins::MOISTURE_ADC);
+static sensor::LightSensor    light;
 
 static uint32_t last_sample_ms  = 0;
 static uint32_t last_report_ms  = 0;
@@ -57,6 +59,10 @@ void setup() {
 
     moisture.begin();
 
+    // Non-fatal: if the BH1750 is missing, everything else keeps working and
+    // light simply reports as unavailable.
+    light.begin();
+
     if (!net::WiFiManager::begin(30000)) {
         log_e("WiFi failed — rebooting in 5 s");
         delay(5000);
@@ -76,15 +82,17 @@ void setup() {
     }
 
     const sensor::MoistureReading boot_reading = moisture.last();
+    const sensor::LightReading    boot_light   = light.sample();
     updateAlertLed(boot_reading);
 
-    log_i("boot reading: %u%% | raw: %u | avg: %.1f | state: %s",
+    log_i("boot reading: %u%% | raw: %u | avg: %.1f | state: %s | lux: %.1f (valid: %d)",
           boot_reading.percent, boot_reading.raw, boot_reading.raw_avg,
-          sensor::toString(boot_reading.state));
+          sensor::toString(boot_reading.state),
+          boot_light.lux, boot_light.valid);
 
     // Boot notification. Reports the state the device woke up in, so a pot that
     // is already dry raises an alert instead of silently becoming the baseline.
-    cloud::TelegramBot::bootReport(boot_reading);
+    cloud::TelegramBot::bootReport(boot_reading, boot_light);
 
     const uint32_t now = millis();
     last_sample_ms  = now;
@@ -110,6 +118,7 @@ void loop() {
     if (now - last_sample_ms >= SENSOR_INTERVAL_MS) {
         last_sample_ms = now;
         updateAlertLed(moisture.sample());
+        light.sample();
     }
 
     // ── Report ────────────────────────────────────────────────────────────────
@@ -117,20 +126,21 @@ void loop() {
         last_report_ms = now;
 
         const sensor::MoistureReading r = moisture.last();
+        const sensor::LightReading    l = light.last();
         const char* state_str = sensor::toString(r.state);
 
-        log_i("moisture: %u%% | raw: %u | avg: %.1f | state: %s",
-              r.percent, r.raw, r.raw_avg, state_str);
+        log_i("moisture: %u%% | raw: %u | avg: %.1f | state: %s | lux: %.1f (valid: %d)",
+              r.percent, r.raw, r.raw_avg, state_str, l.lux, l.valid);
 
         // ── Telegram alert check and command polling ──────────────────────────
         cloud::TelegramBot::checkStateChange(r);
-        cloud::TelegramBot::poll(r);
+        cloud::TelegramBot::poll(r, l);
 
         // ── MQTT publish (throttled) ──────────────────────────────────────────
         if (now - last_publish_ms >= PUBLISH_INTERVAL_MS) {
             last_publish_ms = now;
 
-            if (net::MqttClient::publishMoisture(r.percent, r.raw, state_str)) {
+            if (net::MqttClient::publishMoisture(r.percent, r.raw, state_str, l)) {
                 log_d("MQTT publish OK");
             }
         }

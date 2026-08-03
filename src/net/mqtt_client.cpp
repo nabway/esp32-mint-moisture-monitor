@@ -68,14 +68,24 @@ bool MqttClient::isConnected() {
     return mqtt.connected();
 }
 
-bool MqttClient::publishMoisture(uint8_t percent, uint16_t raw, const char* state) {
+bool MqttClient::publishMoisture(uint8_t percent, uint16_t raw, const char* state,
+                                 const sensor::LightReading& light) {
     if (!mqtt.connected()) return false;
+
+    // JSON null rather than a sentinel number, so a dashboard plots a gap
+    // instead of a bogus reading when the sensor is missing.
+    char lux_field[16];
+    if (light.valid) {
+        snprintf(lux_field, sizeof(lux_field), "%.1f", light.lux);
+    } else {
+        snprintf(lux_field, sizeof(lux_field), "null");
+    }
 
     // Build compact JSON payload
     char payload[128];
     snprintf(payload, sizeof(payload),
-             "{\"percent\":%u,\"raw\":%u,\"state\":\"%s\"}",
-             percent, raw, state);
+             "{\"percent\":%u,\"raw\":%u,\"state\":\"%s\",\"lux\":%s}",
+             percent, raw, state, lux_field);
 
     const bool ok = mqtt.publish(TOPIC_MOISTURE, payload, /*retained=*/true);
     if (ok) {

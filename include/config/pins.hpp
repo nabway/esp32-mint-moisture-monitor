@@ -17,4 +17,10 @@ constexpr int MOISTURE_ADC = 34;
 // different pin, change it here only.
 constexpr int ONBOARD_LED = 2;
 
+// I2C bus — BH1750FVI ambient light sensor.
+// These are the ESP32 defaults. If the sensor is wired elsewhere, this is the
+// only place to change.
+constexpr int I2C_SDA = 21;
+constexpr int I2C_SCL = 22;
+
 }  // namespace pins

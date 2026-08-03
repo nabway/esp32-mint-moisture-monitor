@@ -80,20 +80,35 @@ static const char* stateEmoji(sensor::MoistureState s) {
     }
 }
 
-static void sendStatusMessage(const sensor::MoistureReading& r) {
-    char msg[200];
+// Renders lux for a human, or a placeholder when the sensor has nothing to say.
+static void formatLux(const sensor::LightReading& light, char* out, size_t len) {
+    if (light.valid) {
+        snprintf(out, len, "%.0f lx", light.lux);
+    } else {
+        snprintf(out, len, "n/a");
+    }
+}
+
+static void sendStatusMessage(const sensor::MoistureReading& r,
+                              const sensor::LightReading& light) {
+    char msg[240];
     const uint32_t uptime_s  = millis() / 1000;
     const uint32_t uptime_m  = uptime_s / 60;
     const uint32_t uptime_h  = uptime_m / 60;
 
+    char lux_str[16];
+    formatLux(light, lux_str, sizeof(lux_str));
+
     snprintf(msg, sizeof(msg),
              "%s Menta status\n"
              "Moisture: %u%% — %s\n"
+             "Light: %s\n"
              "Raw ADC: %u\n"
              "Uptime: %uh %02um",
              stateEmoji(r.state),
              r.percent,
              sensor::toString(r.state),
+             lux_str,
              r.raw,
              uptime_h, uptime_m % 60);
 
@@ -106,18 +121,23 @@ bool TelegramBot::send(const char* message) {
     return postMessage(message);
 }
 
-void TelegramBot::bootReport(const sensor::MoistureReading& r) {
+void TelegramBot::bootReport(const sensor::MoistureReading& r,
+                             const sensor::LightReading& light) {
     // Seed the change detector either way: from here on, what matters is the
     // next transition, not whether this particular message got through.
     last_state = r.state;
 
-    char msg[220];
+    char msg[260];
+
+    char lux_str[16];
+    formatLux(light, lux_str, sizeof(lux_str));
 
     if (r.state == sensor::MoistureState::Ok) {
         snprintf(msg, sizeof(msg),
                  "🌿 Menta Monitor online\n"
-                 "Moisture: %u%% — %s",
-                 r.percent, sensor::toString(r.state));
+                 "Moisture: %u%% — %s\n"
+                 "Light: %s",
+                 r.percent, sensor::toString(r.state), lux_str);
     } else {
         // Woke up outside the ideal range. Say so now: waiting for a state
         // *change* would stay silent forever on a pot left to dry, since
@@ -126,10 +146,12 @@ void TelegramBot::bootReport(const sensor::MoistureReading& r) {
                  "%s Menta Monitor online — needs attention\n"
                  "State: %s\n"
                  "Moisture: %u%%\n"
+                 "Light: %s\n"
                  "Raw ADC: %u",
                  stateEmoji(r.state),
                  sensor::toString(r.state),
                  r.percent,
+                 lux_str,
                  r.raw);
     }
 
@@ -171,7 +193,8 @@ void TelegramBot::checkStateChange(const sensor::MoistureReading& r) {
     }
 }
 
-void TelegramBot::poll(const sensor::MoistureReading& r) {
+void TelegramBot::poll(const sensor::MoistureReading& r,
+                       const sensor::LightReading& light) {
     const uint32_t now = millis();
     if (now - last_poll_ms < POLL_INTERVAL_MS) return;
     last_poll_ms = now;
@@ -205,7 +228,7 @@ void TelegramBot::poll(const sensor::MoistureReading& r) {
     log_i("Telegram command: %s", text);
 
     if (strcmp(text, "/status") == 0) {
-        sendStatusMessage(r);
+        sendStatusMessage(r, light);
     } else if (strcmp(text, "/help") == 0) {
         postMessage("🌿 Menta Monitor commands:\n/status — current plant state\n/help — this message");
     }
