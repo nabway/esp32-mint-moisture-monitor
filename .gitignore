@@ -38,3 +38,10 @@ wifi_credentials.h
 *.pem
 *.key
 *.crt
+
+# Pipeline (Python) — the venv is rebuilt from requirements.txt and the databases
+# are local data, not code. .env.example IS committed.
+pipeline/.venv/
+__pycache__/
+*.py[cod]
+*.db
