@@ -52,7 +52,7 @@ void setup() {
     Serial.begin(115200);
     while (!Serial && millis() < 2000) {}
 
-    log_i("=== Menta Monitor v2.0.0 boot ===");
+    log_i("=== Menta Monitor v2.1.0 boot ===");
 
     pinMode(pins::ONBOARD_LED, OUTPUT);
     digitalWrite(pins::ONBOARD_LED, LOW);  // active HIGH, so LOW is OFF

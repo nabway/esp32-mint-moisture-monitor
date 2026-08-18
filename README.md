@@ -6,7 +6,7 @@ An ESP32 reads a capacitive soil moisture sensor, turns the raw ADC value into a
 0–100 % scale, and messages you on Telegram when the plant changes state. It also
 publishes readings over MQTT so you can chart them elsewhere.
 
-**Status:** v2.0.0 — tested and running.
+**Status:** v2.1.0 — tested and running.
 
 ## How it works
 
