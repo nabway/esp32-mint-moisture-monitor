@@ -15,7 +15,6 @@
 # Windows
 Thumbs.db
 
-# Logs
 *.log
 
 # Firmware outputs
@@ -23,25 +22,23 @@ Thumbs.db
 *.elf
 *.map
 
-# Private docs — local only, never pushed
-.hidden.docs/
-
-# Claude Code
-.claude/
-
-# Secrets (next phase)
+# Secrets
 include/config/secrets.hpp
 secrets.h
 credentials.h
+.hidden.docs/
+.claude/
 wifi_credentials.h
 .env
 *.pem
 *.key
 *.crt
 
-# Pipeline (Python) — the venv is rebuilt from requirements.txt and the databases
-# are local data, not code. .env.example IS committed.
+# Python pipeline
 pipeline/.venv/
 __pycache__/
 *.py[cod]
+
+# Live databases stay local; the frozen sample is versioned as an example
 *.db
+!pipeline/sample_data.db
